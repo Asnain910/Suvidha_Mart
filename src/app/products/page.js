@@ -1,12 +1,12 @@
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import ProductCard from '@/components/ProductCard';
 import { useProducts } from '@/context/ProductContext';
 
-export default function ProductsPage() {
+function ProductsContent() {
   const { products, categories } = useProducts();
   const searchParams = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('search') || '');
@@ -158,5 +158,19 @@ export default function ProductsPage() {
       </main>
       <Footer />
     </div>
+  );
+}
+
+export default function ProductsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="spinner" />
+        </div>
+      }
+    >
+      <ProductsContent />
+    </Suspense>
   );
 }

@@ -2,7 +2,7 @@
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 
 const NAV = [
   { group: 'Overview', links: [{ href: '/admin', icon: '📊', label: 'Dashboard' }] },
@@ -19,7 +19,7 @@ const NAV = [
   ]},
 ];
 
-export default function AdminLayout({ children }) {
+function AdminLayoutContent({ children }) {
   const { adminUser, user, adminLogout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -153,5 +153,19 @@ export default function AdminLayout({ children }) {
         {children}
       </div>
     </div>
+  );
+}
+
+export default function AdminLayout({ children }) {
+  return (
+    <Suspense
+      fallback={
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="spinner" />
+        </div>
+      }
+    >
+      <AdminLayoutContent>{children}</AdminLayoutContent>
+    </Suspense>
   );
 }

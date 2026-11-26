@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
@@ -19,7 +19,7 @@ function StarRating({ rating }) {
   );
 }
 
-export default function ProductDetailPage() {
+function ProductDetailContent() {
   const { id } = useParams();
   const { products, categories } = useProducts();
   const { addToCart, items, updateQty, removeFromCart } = useCart();
@@ -209,5 +209,19 @@ export default function ProductDetailPage() {
       </main>
       <Footer />
     </div>
+  );
+}
+
+export default function ProductDetailPage() {
+  return (
+    <Suspense
+      fallback={
+        <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="spinner" />
+        </div>
+      }
+    >
+      <ProductDetailContent />
+    </Suspense>
   );
 }

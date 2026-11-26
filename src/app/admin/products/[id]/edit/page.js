@@ -1,10 +1,10 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useProducts } from '@/context/ProductContext';
 
-export default function EditProductPage() {
+function EditProductForm() {
   const { id } = useParams();
   const { products, updateProduct, categories } = useProducts();
   const router = useRouter();
@@ -141,5 +141,19 @@ export default function EditProductPage() {
         </form>
       </div>
     </>
+  );
+}
+
+export default function EditProductPage() {
+  return (
+    <Suspense
+      fallback={
+        <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="spinner" />
+        </div>
+      }
+    >
+      <EditProductForm />
+    </Suspense>
   );
 }
