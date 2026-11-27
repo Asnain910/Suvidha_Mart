@@ -56,9 +56,10 @@ export async function POST(request) {
       name: user.name,
       email: user.email,
       role: user.role,
-      phone: user.phone,
-      address: user.address,
-      avatar: user.avatar,
+      phone: user.phone || '',
+      address: user.address || '',
+      avatar: user.avatar || user.name.charAt(0).toUpperCase(),
+      isDemo: false,
     };
 
     const token = signToken(userPayload);

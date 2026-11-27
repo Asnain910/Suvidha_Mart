@@ -14,7 +14,13 @@ export async function GET(request) {
       );
     }
 
-    await connectDB();
+    const conn = await connectDB();
+    if (!conn) {
+      return NextResponse.json(
+        { success: false, error: 'Database service unavailable' },
+        { status: 503 }
+      );
+    }
     await autoSeedIfEmpty();
 
     const users = await User.find({}).select('-password').sort({ createdAt: -1 }).lean();

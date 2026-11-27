@@ -22,6 +22,7 @@ export default function CheckoutPage() {
     paymentMethod: 'cod',
   });
   const [errors, setErrors] = useState({});
+  const [submitError, setSubmitError] = useState('');
   const [placing, setPlacing] = useState(false);
   const [success, setSuccess] = useState(false);
   const [orderId, setOrderId] = useState('');
@@ -48,23 +49,30 @@ export default function CheckoutPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setSubmitError('');
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setPlacing(true);
-    await new Promise(r => setTimeout(r, 600));
-    const fullAddress = `${form.address}, ${form.city} - ${form.pincode}`;
-    const order = await placeOrder(
-      user?.id || 'guest',
-      form.name,
-      items.map(i => ({ productId: i.id, name: i.name, price: i.price, qty: i.qty, unit: i.unit })),
-      grandTotal,
-      fullAddress,
-      form.phone
-    );
-    setOrderId(order.id);
-    clearCart();
-    setPlacing(false);
-    setSuccess(true);
+
+    try {
+      const fullAddress = `${form.address}, ${form.city} - ${form.pincode}`;
+      const order = await placeOrder(
+        user?.id || 'guest',
+        form.name,
+        items.map(i => ({ productId: i.id, name: i.name, price: i.price, qty: i.qty, unit: i.unit })),
+        grandTotal,
+        fullAddress,
+        form.phone,
+        form.paymentMethod === 'upi' ? 'UPI Payment' : form.paymentMethod === 'card' ? 'Credit/Debit Card' : 'Cash on Delivery'
+      );
+      setOrderId(order.id);
+      clearCart();
+      setPlacing(false);
+      setSuccess(true);
+    } catch (err) {
+      setPlacing(false);
+      setSubmitError(err.message || 'Failed to place order. Please try again.');
+    }
   };
 
   if (success) return (
@@ -200,6 +208,24 @@ export default function CheckoutPage() {
                   <div className="summary-row"><span>GST (5%)</span><span>₹{tax}</span></div>
                   <div className="divider" />
                   <div className="summary-row total"><span>Grand Total</span><span>₹{grandTotal}</span></div>
+
+                  {submitError && (
+                    <div style={{
+                      background: 'var(--danger-light, #fee2e2)',
+                      border: '1px solid var(--danger, #ef4444)',
+                      borderRadius: 'var(--radius)',
+                      padding: '10px 14px',
+                      color: 'var(--danger, #b91c1c)',
+                      fontSize: '0.85rem',
+                      marginTop: 14,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}>
+                      <span>⚠️</span>
+                      <span>{submitError}</span>
+                    </div>
+                  )}
 
                   <button type="submit" className="btn btn-primary btn-lg w-full mt-20" disabled={placing}>
                     {placing ? <><span className="spinner" style={{ width: 20, height: 20, borderWidth: 3 }} /> Placing Order...</> : '🎉 Place Order'}

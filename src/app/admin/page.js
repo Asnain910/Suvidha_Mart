@@ -1,4 +1,5 @@
 'use client';
+import { useState, useEffect } from 'react';
 import { useProducts } from '@/context/ProductContext';
 import { useOrders } from '@/context/OrderContext';
 import { useAuth } from '@/context/AuthContext';
@@ -25,9 +26,29 @@ function MiniChart({ data, color }) {
 }
 
 export default function AdminDashboard() {
-  const { products, categories } = useProducts();
-  const { orders } = useOrders();
-  const { getAllUsers } = useAuth();
+  const { products, categories, refreshProducts } = useProducts();
+  const { orders, refreshOrders } = useOrders();
+  const { getAllUsers, refreshUsers } = useAuth();
+  const [syncing, setSyncing] = useState(false);
+
+  const syncAll = async () => {
+    setSyncing(true);
+    try {
+      await Promise.all([
+        refreshOrders ? refreshOrders() : Promise.resolve(),
+        refreshUsers ? refreshUsers() : Promise.resolve(),
+        refreshProducts ? refreshProducts() : Promise.resolve(),
+      ]);
+    } catch (e) {
+      console.warn('Dashboard sync error:', e);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    syncAll();
+  }, []);
 
   const customers = getAllUsers().filter(u => u.role === 'customer');
   const totalRevenue = orders.reduce((s, o) => o.status !== 'cancelled' ? s + o.total : s, 0);
@@ -52,6 +73,15 @@ export default function AdminDashboard() {
           <span style={{ fontSize: '0.85rem', color: 'var(--text3)' }}>
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
           </span>
+          <button
+            onClick={syncAll}
+            disabled={syncing}
+            className="btn btn-secondary btn-sm"
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <span style={{ display: 'inline-block', transform: syncing ? 'rotate(360deg)' : 'none', transition: 'transform 0.5s ease' }}>🔄</span>
+            {syncing ? 'Syncing...' : 'Sync Live'}
+          </button>
           <Link href="/admin/products/add" className="btn btn-primary btn-sm">+ Add Product</Link>
         </div>
       </div>

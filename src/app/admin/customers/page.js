@@ -1,13 +1,32 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useOrders } from '@/context/OrderContext';
 
 export default function AdminCustomersPage() {
-  const { getAllUsers } = useAuth();
-  const { getUserOrders, orders } = useOrders();
+  const { getAllUsers, refreshUsers } = useAuth();
+  const { getUserOrders, orders, refreshOrders } = useOrders();
   const [search, setSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const syncData = async () => {
+    setSyncing(true);
+    try {
+      await Promise.all([
+        refreshUsers ? refreshUsers() : Promise.resolve(),
+        refreshOrders ? refreshOrders() : Promise.resolve(),
+      ]);
+    } catch (e) {
+      console.warn('Sync error:', e);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    syncData();
+  }, []);
 
   const customers = getAllUsers().filter(u => u.role === 'customer');
 
@@ -18,7 +37,7 @@ export default function AdminCustomersPage() {
   );
 
   const getCustomerStats = (userId) => {
-    const userOrders = orders.filter(o => o.userId === userId);
+    const userOrders = orders.filter(o => o.userId === userId || o.userId === String(userId));
     const totalSpent = userOrders.reduce((s, o) => o.status !== 'cancelled' ? s + o.total : s, 0);
     return { orderCount: userOrders.length, totalSpent, lastOrder: userOrders[0] };
   };
@@ -26,8 +45,21 @@ export default function AdminCustomersPage() {
   return (
     <>
       <div className="admin-topbar">
-        <h1 className="admin-topbar-title">👥 Customers</h1>
-        <span style={{ fontSize: '0.85rem', color: 'var(--text3)' }}>{customers.length} registered customers</span>
+        <div>
+          <h1 className="admin-topbar-title">👥 Customers</h1>
+          <span style={{ fontSize: '0.85rem', color: 'var(--text3)' }}>{customers.length} registered customers</span>
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button
+            onClick={syncData}
+            disabled={syncing}
+            className="btn btn-secondary btn-sm"
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <span style={{ display: 'inline-block', transform: syncing ? 'rotate(360deg)' : 'none', transition: 'transform 0.5s ease' }}>🔄</span>
+            {syncing ? 'Syncing...' : 'Sync Live'}
+          </button>
+        </div>
       </div>
 
       <div className="admin-content">

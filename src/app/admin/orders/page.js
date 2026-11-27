@@ -1,16 +1,32 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useOrders } from '@/context/OrderContext';
 
 const STATUS_OPTIONS = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
 const STATUS_COLORS = { pending: 'var(--accent2)', processing: 'var(--info)', shipped: 'var(--purple)', delivered: 'var(--primary)', cancelled: 'var(--danger)' };
 
 export default function AdminOrdersPage() {
-  const { orders, updateStatus } = useOrders();
+  const { orders, updateStatus, refreshOrders } = useOrders();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [expandedId, setExpandedId] = useState(null);
   const [updatingId, setUpdatingId] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const syncOrders = async () => {
+    setSyncing(true);
+    try {
+      if (refreshOrders) await refreshOrders();
+    } catch (e) {
+      console.warn('Orders sync error:', e);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    syncOrders();
+  }, []);
 
   const filtered = orders.filter(o => {
     const matchSearch = o.id.toLowerCase().includes(search.toLowerCase()) || o.customerName?.toLowerCase().includes(search.toLowerCase());
@@ -29,9 +45,18 @@ export default function AdminOrdersPage() {
     <>
       <div className="admin-topbar">
         <h1 className="admin-topbar-title">🚚 Orders Management</h1>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: '0.85rem', color: 'var(--text3)' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: '0.85rem', color: 'var(--text3)' }}>
           <span>Total: <strong style={{ color: 'var(--text)' }}>{orders.length}</strong></span>
           <span>Pending: <strong style={{ color: 'var(--accent2)' }}>{orders.filter(o => o.status === 'pending').length}</strong></span>
+          <button
+            onClick={syncOrders}
+            disabled={syncing}
+            className="btn btn-secondary btn-sm"
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <span style={{ display: 'inline-block', transform: syncing ? 'rotate(360deg)' : 'none', transition: 'transform 0.5s ease' }}>🔄</span>
+            {syncing ? 'Syncing...' : 'Sync Live'}
+          </button>
         </div>
       </div>
 

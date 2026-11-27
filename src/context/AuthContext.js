@@ -13,9 +13,17 @@ export function AuthProvider({ children }) {
   const [users, setUsers] = useState(INITIAL_USERS);
   const [loading, setLoading] = useState(true);
 
+  // Centralized fetch for registered users from backend API
   async function fetchUsers(authToken) {
-    const currentToken = authToken || adminToken || token || localStorage.getItem('sm_admin_token') || localStorage.getItem('sm_token');
-    if (!currentToken) return;
+    const currentToken =
+      authToken ||
+      adminToken ||
+      (typeof window !== 'undefined' ? localStorage.getItem('sm_admin_token') : null) ||
+      token ||
+      (typeof window !== 'undefined' ? localStorage.getItem('sm_token') : null);
+
+    if (!currentToken) return users;
+
     try {
       const res = await fetch('/api/users', {
         headers: {
@@ -23,11 +31,17 @@ export function AuthProvider({ children }) {
         },
       });
       const data = await res.json();
-      if (data.success && data.users) {
+      if (data.success && Array.isArray(data.users)) {
         setUsers(data.users);
-        localStorage.setItem('sm_users', JSON.stringify(data.users));
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('sm_users', JSON.stringify(data.users));
+        }
+        return data.users;
       }
-    } catch (e) { }
+    } catch (e) {
+      console.warn('Could not fetch users from backend API:', e.message);
+    }
+    return users;
   }
 
   // Initialize both Customer and Admin sessions on mount
@@ -40,8 +54,9 @@ export function AuthProvider({ children }) {
 
     if (savedUsers) {
       try {
-        setUsers(JSON.parse(savedUsers));
-      } catch (e) { }
+        const parsed = JSON.parse(savedUsers);
+        if (Array.isArray(parsed) && parsed.length > 0) setUsers(parsed);
+      } catch (e) {}
     }
 
     // 1. Restore Customer session
@@ -50,7 +65,7 @@ export function AuthProvider({ children }) {
       if (savedUser) {
         try {
           setUser(JSON.parse(savedUser));
-        } catch (e) { }
+        } catch (e) {}
       }
 
       fetch('/api/auth/me', {
@@ -68,11 +83,11 @@ export function AuthProvider({ children }) {
             localStorage.removeItem('sm_user');
           }
         })
-        .catch(() => { });
+        .catch(() => {});
     } else if (savedUser) {
       try {
         setUser(JSON.parse(savedUser));
-      } catch (e) { }
+      } catch (e) {}
     }
 
     // 2. Restore Admin session
@@ -82,7 +97,7 @@ export function AuthProvider({ children }) {
         try {
           const parsed = JSON.parse(savedAdminUser);
           if (parsed.role === 'admin') setAdminUser(parsed);
-        } catch (e) { }
+        } catch (e) {}
       }
 
       fetch('/api/auth/me', {
@@ -108,7 +123,7 @@ export function AuthProvider({ children }) {
       try {
         const parsed = JSON.parse(savedAdminUser);
         if (parsed.role === 'admin') setAdminUser(parsed);
-      } catch (e) { }
+      } catch (e) {}
     }
 
     setLoading(false);
@@ -119,23 +134,6 @@ export function AuthProvider({ children }) {
     const normEmail = (email || '').trim().toLowerCase();
     const cleanPassword = (password || '').trim();
 
-    // 1. Direct master admin credential check (works instantly offline & online)
-    if (normEmail === 'admin@suvidhamart.com' && cleanPassword === 'admin123') {
-      const adminObj = {
-        id: 'admin',
-        name: 'Suvidha Mart Admin',
-        email: 'admin@suvidhamart.com',
-        role: 'admin',
-        phone: '9000000000',
-        avatar: '🛡️',
-        isDemo: true,
-      };
-      setAdminUser(adminObj);
-      localStorage.setItem('sm_admin_user', JSON.stringify(adminObj));
-      return { success: true, user: adminObj };
-    }
-
-    // 2. Try API login if server has active MongoDB
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -151,28 +149,35 @@ export function AuthProvider({ children }) {
         setAdminUser(data.user);
         setAdminToken(data.token);
         localStorage.setItem('sm_admin_user', JSON.stringify(data.user));
-        if (data.token) localStorage.setItem('sm_admin_token', data.token);
+        if (data.token) {
+          localStorage.setItem('sm_admin_token', data.token);
+          // Immediately fetch all users from backend database with the new admin token
+          await fetchUsers(data.token);
+        }
         return { success: true, user: data.user };
       }
-    } catch (e) { }
 
-    // 3. Check INITIAL_USERS or sm_users for any other configured admins
-    const localUsers = JSON.parse(localStorage.getItem('sm_users') || '[]');
-    const combined = [...INITIAL_USERS, ...localUsers];
-    const foundAdmin = combined.find(
-      (u) => u.email.toLowerCase() === normEmail && u.password === cleanPassword && u.role === 'admin'
-    );
-    if (foundAdmin) {
-      setAdminUser(foundAdmin);
-      localStorage.setItem('sm_admin_user', JSON.stringify(foundAdmin));
-      return { success: true, user: foundAdmin };
+      if (data.error) {
+        return { success: false, error: data.error };
+      }
+    } catch (e) {
+      console.warn('Admin API login network error:', e.message);
     }
 
-    if (normEmail === 'admin@suvidhamart.com') {
-      return {
-        success: false,
-        error: 'Incorrect password for admin account. Password is: admin123',
+    // Direct master admin credential fallback if network fails
+    if (normEmail === 'admin@suvidhamart.com' && cleanPassword === 'admin123') {
+      const adminObj = {
+        id: 'admin',
+        name: 'Suvidha Mart Admin',
+        email: 'admin@suvidhamart.com',
+        role: 'admin',
+        phone: '9000000000',
+        avatar: '🛡️',
+        isDemo: false,
       };
+      setAdminUser(adminObj);
+      localStorage.setItem('sm_admin_user', JSON.stringify(adminObj));
+      return { success: true, user: adminObj };
     }
 
     return {
@@ -193,7 +198,6 @@ export function AuthProvider({ children }) {
     const normEmail = (email || '').trim().toLowerCase();
     const cleanPassword = (password || '').trim();
 
-    // 1. Try API login first if backend DB is connected
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -209,64 +213,28 @@ export function AuthProvider({ children }) {
         if (data.token) localStorage.setItem('sm_token', data.token);
         return { success: true, user: data.user };
       }
-    } catch (err) { }
 
-    // 2. Local authentication fallback: Combine INITIAL_USERS (has passwords) with locally registered users
-    const localUsers = JSON.parse(localStorage.getItem('sm_users') || '[]');
-    const allUsers = [...INITIAL_USERS, ...localUsers];
-
-    const userMatch = allUsers.find((u) => u.email.toLowerCase() === normEmail);
-    if (!userMatch) {
       return {
         success: false,
-        error: `No account found for "${normEmail}". Please click 'Create one free' below to sign up.`,
+        error: data.error || 'Invalid email or password',
       };
-    }
-
-    if (userMatch.password && userMatch.password !== cleanPassword) {
+    } catch (err) {
       return {
         success: false,
-        error: 'Incorrect password. Please try again.',
+        error: 'Network error. Please check your internet connection.',
       };
     }
-
-    setUser(userMatch);
-    localStorage.setItem('sm_user', JSON.stringify(userMatch));
-    return { success: true, user: userMatch };
   };
 
-  // Customer Storefront Signup
+  // Customer Storefront Signup - Centralized Backend Database Registration
   const signup = async (name, email, password, phone) => {
     const normEmail = (email || '').trim().toLowerCase();
-    const allUsers = JSON.parse(localStorage.getItem('sm_users') || JSON.stringify(INITIAL_USERS));
-
-    const registerLocally = () => {
-      if (allUsers.find((u) => u.email.toLowerCase() === normEmail)) {
-        return { success: false, error: 'An account with this email already exists. Please sign in.' };
-      }
-      const newUser = {
-        id: `u${Date.now()}`,
-        name: name.trim(),
-        email: normEmail,
-        password,
-        phone: phone ? phone.trim() : '',
-        role: 'customer',
-        address: '',
-        avatar: name.trim().charAt(0).toUpperCase(),
-        isDemo: false,
-      };
-      const updated = [...allUsers, newUser];
-      localStorage.setItem('sm_users', JSON.stringify(updated));
-      setUser(newUser);
-      localStorage.setItem('sm_user', JSON.stringify(newUser));
-      return { success: true, user: newUser };
-    };
 
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email: normEmail, password, phone }),
+        body: JSON.stringify({ name: name.trim(), email: normEmail, password, phone: phone ? phone.trim() : '' }),
       });
 
       const data = await res.json();
@@ -275,16 +243,22 @@ export function AuthProvider({ children }) {
         setToken(data.token);
         localStorage.setItem('sm_user', JSON.stringify(data.user));
         if (data.token) localStorage.setItem('sm_token', data.token);
+
+        // Keep local users state synced
+        setUsers((prev) => [data.user, ...prev.filter((u) => u.id !== data.user.id && u.email !== data.user.email)]);
+
         return { success: true, user: data.user };
       }
 
-      if (data.error && data.error.includes('already exists')) {
-        return { success: false, error: data.error };
-      }
-
-      return registerLocally();
+      return {
+        success: false,
+        error: data.error || 'Registration failed. Please try again.',
+      };
     } catch (err) {
-      return registerLocally();
+      return {
+        success: false,
+        error: 'Unable to connect to server. Please check your internet connection and try again.',
+      };
     }
   };
 
@@ -311,14 +285,12 @@ export function AuthProvider({ children }) {
           },
           body: JSON.stringify(data),
         });
-      } catch (e) { }
+      } catch (e) {}
     }
   };
 
   const getAllUsers = () => {
-    return users && users.length > 0
-      ? users
-      : JSON.parse(localStorage.getItem('sm_users') || JSON.stringify(INITIAL_USERS));
+    return users || [];
   };
 
   return (
@@ -328,6 +300,7 @@ export function AuthProvider({ children }) {
         token,
         adminUser,
         adminToken,
+        users,
         loading,
         login,
         adminLogin,
@@ -336,6 +309,7 @@ export function AuthProvider({ children }) {
         adminLogout,
         updateUser,
         getAllUsers,
+        refreshUsers: fetchUsers,
       }}
     >
       {children}

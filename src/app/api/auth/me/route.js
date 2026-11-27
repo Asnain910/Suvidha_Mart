@@ -13,8 +13,32 @@ export async function GET(request) {
       );
     }
 
+    // Master admin session
+    if (auth.role === 'admin' && (auth.id === 'admin' || auth.email === 'admin@suvidhamart.com')) {
+      return NextResponse.json({
+        success: true,
+        user: {
+          id: auth.id || 'admin',
+          name: auth.name || 'Suvidha Mart Admin',
+          email: 'admin@suvidhamart.com',
+          role: 'admin',
+          phone: auth.phone || '9000000000',
+          avatar: '🛡️',
+          isDemo: false,
+        },
+      });
+    }
+
     await connectDB();
-    const user = await User.findById(auth.id).select('-password');
+    let user = null;
+
+    if (auth.id && /^[0-9a-fA-F]{24}$/.test(auth.id)) {
+      user = await User.findById(auth.id).select('-password');
+    }
+    if (!user && auth.email) {
+      user = await User.findOne({ email: auth.email.toLowerCase() }).select('-password');
+    }
+
     if (!user) {
       return NextResponse.json(
         { success: false, error: 'User not found' },

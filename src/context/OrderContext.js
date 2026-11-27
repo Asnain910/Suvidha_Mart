@@ -8,86 +8,106 @@ export function OrderProvider({ children }) {
   const [orders, setOrders] = useState(INITIAL_ORDERS);
   const [loading, setLoading] = useState(true);
 
+  // Centralized load from backend API
   const loadOrders = async () => {
-    const token = localStorage.getItem('sm_admin_token') || localStorage.getItem('sm_token');
+    const token =
+      (typeof window !== 'undefined' ? localStorage.getItem('sm_admin_token') : null) ||
+      (typeof window !== 'undefined' ? localStorage.getItem('sm_token') : null);
+
     try {
       const res = await fetch('/api/orders', {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       const data = await res.json();
-      if (data.success && data.orders && data.orders.length > 0) {
+      if (data.success && Array.isArray(data.orders)) {
         setOrders(data.orders);
-        localStorage.setItem('sm_orders', JSON.stringify(data.orders));
-      } else {
-        const saved = localStorage.getItem('sm_orders');
-        if (saved) setOrders(JSON.parse(saved));
-        else localStorage.setItem('sm_orders', JSON.stringify(INITIAL_ORDERS));
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('sm_orders', JSON.stringify(data.orders));
+        }
+        return data.orders;
       }
     } catch (e) {
-      const saved = localStorage.getItem('sm_orders');
-      if (saved) setOrders(JSON.parse(saved));
+      console.warn('Could not load orders from API, checking local cache:', e.message);
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('sm_orders');
+        if (saved) {
+          try {
+            setOrders(JSON.parse(saved));
+          } catch (err) {}
+        }
+      }
     } finally {
       setLoading(false);
     }
+    return orders;
   };
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('sm_orders');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) setOrders(parsed);
+        } catch (e) {}
+      }
+    }
     loadOrders();
   }, []);
 
-  const save = (updated) => {
-    setOrders(updated);
-    localStorage.setItem('sm_orders', JSON.stringify(updated));
-  };
+  const placeOrder = async (userId, customerName, items, total, address, phone, paymentMethod = 'Cash on Delivery') => {
+    const token =
+      (typeof window !== 'undefined' ? localStorage.getItem('sm_token') : null) ||
+      (typeof window !== 'undefined' ? localStorage.getItem('sm_admin_token') : null);
 
-  const placeOrder = async (userId, customerName, items, total, address, phone) => {
-    const orderId = `ORD${String(Date.now()).slice(-6)}`;
-    const newOrder = {
-      id: orderId,
+    const clientOrderId = `ORD${Date.now().toString().slice(-6)}`;
+    const orderPayload = {
+      id: clientOrderId,
       userId,
       customerName,
       items,
       total,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
       address,
       phone,
-      isDemo: false,
+      paymentMethod,
     };
 
-    // Optimistic local update
-    const updated = [newOrder, ...orders];
-    save(updated);
+    const res = await fetch('/api/orders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(orderPayload),
+    });
 
-    const token = localStorage.getItem('sm_admin_token') || localStorage.getItem('sm_token');
-    try {
-      const res = await fetch('/api/orders', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(newOrder),
-      });
-      const data = await res.json();
-      if (data.success && data.order) {
-        const synced = orders.map((o) => (o.id === orderId ? data.order : o));
-        save(synced);
-        return data.order;
-      }
-    } catch (e) {}
+    const data = await res.json();
+    if (!res.ok || !data.success || !data.order) {
+      throw new Error(data.error || 'Failed to place order in backend database');
+    }
 
-    return newOrder;
+    const createdOrder = data.order;
+    setOrders((prev) => [createdOrder, ...prev.filter((o) => o.id !== createdOrder.id)]);
+    if (typeof window !== 'undefined') {
+      const current = JSON.parse(localStorage.getItem('sm_orders') || '[]');
+      localStorage.setItem(
+        'sm_orders',
+        JSON.stringify([createdOrder, ...current.filter((o) => o.id !== createdOrder.id)])
+      );
+    }
+    return createdOrder;
   };
 
   const updateStatus = async (orderId, status) => {
-    const updated = orders.map((o) => (o.id === orderId ? { ...o, status } : o));
-    save(updated);
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status } : o)));
 
-    const token = localStorage.getItem('sm_admin_token') || localStorage.getItem('sm_token');
+    const token =
+      (typeof window !== 'undefined' ? localStorage.getItem('sm_admin_token') : null) ||
+      (typeof window !== 'undefined' ? localStorage.getItem('sm_token') : null);
+
     if (token) {
       try {
-        await fetch(`/api/orders/${orderId}`, {
+        const res = await fetch(`/api/orders/${orderId}`, {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
@@ -95,11 +115,17 @@ export function OrderProvider({ children }) {
           },
           body: JSON.stringify({ status }),
         });
-      } catch (e) {}
+        const data = await res.json();
+        if (data.success && data.order) {
+          setOrders((prev) => prev.map((o) => (o.id === orderId ? data.order : o)));
+        }
+      } catch (e) {
+        console.warn('Failed to update order status on server:', e.message);
+      }
     }
   };
 
-  const getUserOrders = (userId) => orders.filter((o) => o.userId === userId);
+  const getUserOrders = (userId) => orders.filter((o) => o.userId === userId || o.userId === String(userId));
 
   return (
     <OrderContext.Provider

@@ -6,7 +6,13 @@ import { getAuthUser } from '@/lib/auth';
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
-    await connectDB();
+    const conn = await connectDB();
+    if (!conn) {
+      return NextResponse.json(
+        { success: false, error: 'Database service unavailable' },
+        { status: 503 }
+      );
+    }
 
     const order = await Order.findOne({
       $or: [{ id: id }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }],
@@ -57,7 +63,13 @@ export async function PATCH(request, { params }) {
       );
     }
 
-    await connectDB();
+    const conn = await connectDB();
+    if (!conn) {
+      return NextResponse.json(
+        { success: false, error: 'Database service unavailable' },
+        { status: 503 }
+      );
+    }
     const updated = await Order.findOneAndUpdate(
       { $or: [{ id: id }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }] },
       { $set: { status } },
