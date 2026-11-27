@@ -65,7 +65,55 @@ export async function POST(request) {
       });
     }
 
-    // 2. Regular user / database user login
+    // 2. Demo Customer quick fill handling
+    if (normalizedEmail === 'customer@suvidhamart.com' && cleanPassword === 'customer123') {
+      let customerId = 'u1';
+      let customerUser = null;
+
+      try {
+        const conn = await connectDB();
+        if (conn) {
+          customerUser = await User.findOne({ email: normalizedEmail });
+          if (!customerUser) {
+            const hashedPassword = await hashPassword('customer123');
+            customerUser = await User.create({
+              name: 'Rahul Sharma (Demo)',
+              email: normalizedEmail,
+              password: hashedPassword,
+              role: 'customer',
+              phone: '9876543210',
+              address: '42, Green Park, Delhi - 110016',
+              avatar: 'R',
+              isDemo: true,
+            });
+          }
+          if (customerUser) customerId = customerUser._id.toString();
+        }
+      } catch (dbErr) {
+        console.warn('Demo customer DB sync warning:', dbErr.message);
+      }
+
+      const customerPayload = {
+        id: customerId,
+        name: customerUser?.name || 'Rahul Sharma (Demo)',
+        email: normalizedEmail,
+        role: 'customer',
+        phone: customerUser?.phone || '9876543210',
+        address: customerUser?.address || '42, Green Park, Delhi - 110016',
+        avatar: 'R',
+        isDemo: true,
+      };
+
+      const token = signToken(customerPayload);
+
+      return NextResponse.json({
+        success: true,
+        user: customerPayload,
+        token,
+      });
+    }
+
+    // 3. Regular user / database user login
     const conn = await connectDB();
     if (!conn) {
       return NextResponse.json(
